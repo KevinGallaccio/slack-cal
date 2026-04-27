@@ -9,6 +9,11 @@ interface SyncOptions {
   baselineWindowDays?: number;
 }
 
+// 6 months covers most personal scheduling horizons. After the first
+// baseline, this matters far less -- incremental syncs (via syncToken)
+// catch every change, regardless of how far out the event is.
+const DEFAULT_BASELINE_WINDOW_DAYS = 180;
+
 /**
  * Performs an incremental sync for one calendar.
  * Returns the events that changed since the last sync, plus the new sync token.
@@ -35,7 +40,7 @@ export async function incrementalSync(
     } else {
       // Initial baseline window: now → +N days.
       usedBaseline = true;
-      const days = opts.baselineWindowDays ?? 7;
+      const days = opts.baselineWindowDays ?? DEFAULT_BASELINE_WINDOW_DAYS;
       params.set('timeMin', new Date().toISOString());
       params.set('timeMax', new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString());
       params.set('orderBy', 'startTime');
