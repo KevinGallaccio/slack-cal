@@ -1,9 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '../logger.js';
 import * as channels from '../db/repos/watch-channels.js';
-import * as calendars from '../db/repos/calendars.js';
-import { incrementalSync } from '../google/sync.js';
-import { processEvent } from '../scheduler/process-event.js';
+import { syncAndProcessCalendar } from '../scheduler/process-event.js';
 
 export function registerGoogleWebhook(app: FastifyInstance): void {
   app.post('/webhooks/google', async (req, reply) => {
@@ -39,23 +37,9 @@ export function registerGoogleWebhook(app: FastifyInstance): void {
     reply.code(200).send({ ok: true });
 
     setImmediate(() => {
-      handleChange(watch.calendar_id).catch((err) =>
+      syncAndProcessCalendar(watch.calendar_id).catch((err) =>
         logger.error({ err, channelId }, 'webhook handling failed')
       );
     });
   });
-}
-
-async function handleChange(calendarRowId: number): Promise<void> {
-  const cal = await calendars.getCalendarById(calendarRowId);
-  if (!cal) return;
-
-  const { events } = await incrementalSync(calendarRowId);
-  for (const event of events) {
-    try {
-      await processEvent(event, calendarRowId, cal.source);
-    } catch (err) {
-      logger.error({ err, eventId: event.id }, 'processEvent failed');
-    }
-  }
 }

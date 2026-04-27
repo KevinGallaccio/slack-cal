@@ -5,6 +5,7 @@ import * as calendarsRepo from '../db/repos/calendars.js';
 import type { CalendarSource } from '../db/repos/calendars.js';
 import * as channelsRepo from '../db/repos/watch-channels.js';
 import { createWatchChannel } from './watch.js';
+import { syncAndProcessCalendar } from '../scheduler/process-event.js';
 
 type Account = Awaited<ReturnType<typeof accountsRepo.listAccounts>>[number];
 
@@ -62,9 +63,22 @@ export async function ensureCalendarsAndWatches(): Promise<void> {
   const calendars = await calendarsRepo.listCalendars();
   const allChannels = await channelsRepo.listAll();
   for (const cal of calendars) {
-    const has = allChannels.find((c) => c.calendar_id === cal.id);
-    if (has) continue;
-    await createWatchChannel(cal.id);
+    const hasChannel = allChannels.find((c) => c.calendar_id === cal.id);
+    if (!hasChannel) {
+      await createWatchChannel(cal.id);
+    }
+
+    // First-time setup: pull existing future events so we don't sit idle
+    // waiting for a user-triggered change. Also catches calendars whose
+    // sync token was lost (e.g., DB reset) -- they re-baseline cheaply.
+    if (!cal.sync_token) {
+      try {
+        const count = await syncAndProcessCalendar(cal.id);
+        logger.info({ calendarId: cal.calendar_id, count }, 'baseline sync complete');
+      } catch (err) {
+        logger.error({ err, calendarId: cal.calendar_id }, 'baseline sync failed');
+      }
+    }
   }
 }
 

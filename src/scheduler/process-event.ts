@@ -2,9 +2,11 @@ import { logger } from '../logger.js';
 import * as jobsRepo from '../db/repos/scheduled-jobs.js';
 import * as classRepo from '../db/repos/classifications.js';
 import * as currentStatus from '../db/repos/current-status.js';
+import * as calendarsRepo from '../db/repos/calendars.js';
 import { classify } from '../classifier/haiku.js';
 import { scheduleJob, cancelJobsForEvent } from './index.js';
 import { clearProfileStatus } from '../slack/client.js';
+import { incrementalSync } from '../google/sync.js';
 import type { CalendarEvent } from '../google/types.js';
 import type { CalendarSource } from '../db/repos/calendars.js';
 
@@ -97,6 +99,34 @@ export async function processEvent(
     await scheduleJob(askJob);
     // clear job is scheduled later, after the user confirms in the DM
   }
+}
+
+/**
+ * Run an incremental sync for one calendar and feed every changed event
+ * through `processEvent`. Used by both the webhook handler and by startup
+ * code that needs to ingest existing events when a calendar is first
+ * registered (or when its sync token is missing).
+ *
+ * Idempotent: events whose `updated` timestamp matches a stored
+ * classification are skipped without calling Haiku.
+ */
+export async function syncAndProcessCalendar(calendarRowId: number): Promise<number> {
+  const cal = await calendarsRepo.getCalendarById(calendarRowId);
+  if (!cal) return 0;
+  const { events } = await incrementalSync(calendarRowId);
+  let processed = 0;
+  for (const event of events) {
+    try {
+      await processEvent(event, calendarRowId, cal.source);
+      processed++;
+    } catch (err) {
+      logger.error(
+        { err, eventId: event.id, calendarId: cal.calendar_id },
+        'processEvent failed during sync'
+      );
+    }
+  }
+  return processed;
 }
 
 async function handleDeleted(eventId: string): Promise<void> {
