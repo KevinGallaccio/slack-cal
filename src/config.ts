@@ -24,6 +24,8 @@ const schema = z.object({
 
   WORK_CALENDAR_ID: z.string().default('primary'),
   PERSONAL_CALENDAR_ID: z.string().optional(),
+
+  ADMIN_PASSWORD: z.string().min(16, 'ADMIN_PASSWORD should be at least 16 chars'),
 });
 
 export type Config = z.infer<typeof schema>;

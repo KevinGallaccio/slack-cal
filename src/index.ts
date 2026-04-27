@@ -5,6 +5,7 @@ import { logger } from './logger.js';
 import { registerGoogleWebhook } from './webhooks/google.js';
 import { registerSlackWebhook } from './webhooks/slack.js';
 import { registerGoogleOAuthRoutes } from './webhooks/google-oauth.js';
+import { registerAdminRoutes } from './admin.js';
 import { recoverOnStartup, startScheduler } from './scheduler/index.js';
 import { renewExpiringChannels, startRenewalLoop } from './google/watch.js';
 import { ensureCalendarsAndWatchesBestEffort } from './google/setup.js';
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
   registerGoogleOAuthRoutes(app);
   registerGoogleWebhook(app);
   registerSlackWebhook(app);
+  registerAdminRoutes(app);
 
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   logger.info({ port: config.PORT }, 'slack-cal listening');

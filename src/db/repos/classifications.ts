@@ -55,3 +55,11 @@ export async function getClassification(
 export async function deleteClassification(eventId: string): Promise<void> {
   await query(`DELETE FROM event_classifications WHERE event_id = $1`, [eventId]);
 }
+
+export async function listRecent(limit: number): Promise<EventClassification[]> {
+  const { rows } = await query<EventClassification>(
+    `SELECT * FROM event_classifications ORDER BY classified_at DESC LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}

@@ -15,6 +15,7 @@ beforeAll(() => {
   process.env.PUBLIC_URL = 'https://example.com';
   process.env.DATABASE_URL = 'postgres://localhost/test';
   process.env.WATCH_TOKEN_SECRET = 'a-string-of-at-least-16-chars';
+  process.env.ADMIN_PASSWORD = 'a-string-of-at-least-16-chars';
 });
 
 describe('verifySlackSignature', () => {
