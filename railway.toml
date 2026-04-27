@@ -4,6 +4,7 @@ buildCommand = "npm run build"
 
 [deploy]
 startCommand = "npm run start"
+preDeployCommand = "npm run migrate"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

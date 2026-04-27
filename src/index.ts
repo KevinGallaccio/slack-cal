@@ -7,6 +7,7 @@ import { registerSlackWebhook } from './webhooks/slack.js';
 import { registerGoogleOAuthRoutes } from './webhooks/google-oauth.js';
 import { recoverOnStartup, startScheduler } from './scheduler/index.js';
 import { renewExpiringChannels, startRenewalLoop } from './google/watch.js';
+import { ensureCalendarsAndWatchesBestEffort } from './google/setup.js';
 import { shutdown as shutdownDb } from './db/client.js';
 
 async function main(): Promise<void> {
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   logger.info({ port: config.PORT }, 'slack-cal listening');
 
+  await ensureCalendarsAndWatchesBestEffort();
   await recoverOnStartup();
   const sweepHandle = startScheduler();
   await renewExpiringChannels().catch((err) =>
@@ -53,7 +55,11 @@ async function main(): Promise<void> {
   process.on('SIGINT', onShutdown);
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
+  // log to stderr unconditionally so Railway captures it even if pino's
+  // serializer hides the cause.
+  console.error('fatal startup error:', err);
+  if (err instanceof Error && err.stack) console.error(err.stack);
   logger.error({ err }, 'fatal startup error');
   process.exit(1);
 });
