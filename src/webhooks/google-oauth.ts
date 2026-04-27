@@ -5,8 +5,9 @@ import { ensureCalendarsAndWatchesBestEffort } from '../google/setup.js';
 import { logger } from '../logger.js';
 
 export function registerGoogleOAuthRoutes(app: FastifyInstance): void {
-  app.get('/auth/google', async (_req, reply) => {
-    reply.redirect(getAuthUrl());
+  app.get('/auth/google', async (req, reply) => {
+    const { hint } = req.query as { hint?: string };
+    reply.redirect(getAuthUrl(undefined, hint));
   });
 
   app.get('/auth/google/callback', async (req, reply) => {
@@ -47,7 +48,7 @@ export function registerGoogleOAuthRoutes(app: FastifyInstance): void {
 <div class="ok">✓ Connected</div>
 <p><strong>${escape(tokens.email)}</strong> is now linked. Calendar registration ran automatically — check the admin page to verify watch channels were created.</p>
 <p><a href="/admin">Open admin →</a></p>
-<p>To connect another account, open this page in a new incognito window and visit <code>/auth/google</code> while signed in to that account.</p>
+<p>To connect another account, click "Connect Google account" on the admin page. Google will show its account picker so you can pick the other one.</p>
 </body></html>`;
   });
 }

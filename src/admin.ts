@@ -137,6 +137,33 @@ async function renderAdminPage(): Promise<string> {
       <span><strong>${pending.length}</strong> pending job${pending.length === 1 ? '' : 's'}</span>
     </div>`;
 
+  const connectedEmails = new Set(accounts.map((a) => a.email));
+  const hintCandidates: { label: string; hint: string }[] = [];
+  if (isEmail(config.WORK_CALENDAR_ID) && !connectedEmails.has(config.WORK_CALENDAR_ID)) {
+    hintCandidates.push({ label: 'Connect work account', hint: config.WORK_CALENDAR_ID });
+  }
+  if (
+    config.PERSONAL_CALENDAR_ID &&
+    isEmail(config.PERSONAL_CALENDAR_ID) &&
+    !connectedEmails.has(config.PERSONAL_CALENDAR_ID)
+  ) {
+    hintCandidates.push({
+      label: 'Connect personal account',
+      hint: config.PERSONAL_CALENDAR_ID,
+    });
+  }
+
+  const connectHtml = `
+    <div class="connect">
+      ${hintCandidates
+        .map(
+          (b) =>
+            `<a class="btn primary" href="/auth/google?hint=${encodeURIComponent(b.hint)}">${esc(b.label)} <span class="hint">${esc(b.hint)}</span></a>`
+        )
+        .join('')}
+      <a class="btn" href="/auth/google">Connect a Google account</a>
+    </div>`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -171,12 +198,27 @@ async function renderAdminPage(): Promise<string> {
   .status { display: flex; gap: 1rem; align-items: center; padding: 1rem; border: 1px solid #e0e0e0; border-radius: 8px; }
   .status .emoji { font-size: 1.5rem; }
   .status-text { font-weight: 600; }
+  .connect { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .9rem;
+    border: 1px solid #d0d0d0; border-radius: 6px; text-decoration: none;
+    color: inherit; font-size: .9rem; background: #fff;
+  }
+  .btn:hover { background: #f5f5f5; }
+  .btn.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  .btn.primary:hover { background: #1557b0; }
+  .btn .hint { opacity: .7; font-size: .8rem; font-weight: normal; }
+  @media (prefers-color-scheme: dark) {
+    .btn { background: #181818; border-color: #2a2a2a; }
+    .btn:hover { background: #222; }
+  }
 </style>
 </head>
 <body>
 <h1>slack-cal admin</h1>
 <div class="muted">${esc(config.PUBLIC_URL)} · auto-refresh every 30s</div>
 ${summary}
+${connectHtml}
 
 <h2>Connected Google accounts</h2>
 ${accountsHtml}
@@ -235,4 +277,8 @@ function table(headers: string[], rows: string[][]): string {
 
 function empty(msg: string): string {
   return `<div class="empty">${esc(msg)}</div>`;
+}
+
+function isEmail(s: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 }

@@ -13,13 +13,16 @@ export function makeOAuthClient(): OAuth2Client {
   );
 }
 
-export function getAuthUrl(state?: string): string {
+export function getAuthUrl(state?: string, loginHint?: string): string {
   const client = makeOAuthClient();
   return client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
+    // select_account: always show the account picker, even if signed in
+    // consent: always return a refresh_token (Google omits it after the first grant otherwise)
+    prompt: 'select_account consent',
     scope: SCOPES,
     state,
+    ...(loginHint ? { login_hint: loginHint } : {}),
   });
 }
 
