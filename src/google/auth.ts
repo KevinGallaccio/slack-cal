@@ -3,7 +3,14 @@ import { config } from '../config.js';
 import * as accounts from '../db/repos/google-accounts.js';
 import { logger } from '../logger.js';
 
-export const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
+// `openid` + `email` are required so Google returns an id_token whose
+// payload carries the user's email -- we use it to key the google_accounts
+// table. Calendar read access is the actual capability we need at runtime.
+export const SCOPES = [
+  'openid',
+  'email',
+  'https://www.googleapis.com/auth/calendar.readonly',
+];
 
 export function makeOAuthClient(): OAuth2Client {
   return new OAuth2Client(
