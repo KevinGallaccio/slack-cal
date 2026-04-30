@@ -41,3 +41,10 @@ export async function getApproval(id: string): Promise<PendingApproval | null> {
 export async function deleteApproval(id: string): Promise<void> {
   await query(`DELETE FROM pending_approvals WHERE id = $1`, [id]);
 }
+
+export async function listAll(): Promise<PendingApproval[]> {
+  const { rows } = await query<PendingApproval>(
+    `SELECT * FROM pending_approvals ORDER BY expires_at DESC`
+  );
+  return rows;
+}

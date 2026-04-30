@@ -1,19 +1,42 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config.js';
+import { logger } from './logger.js';
+import { query } from './db/client.js';
 import * as accountsRepo from './db/repos/google-accounts.js';
 import * as calendarsRepo from './db/repos/calendars.js';
 import * as channelsRepo from './db/repos/watch-channels.js';
 import * as jobsRepo from './db/repos/scheduled-jobs.js';
 import * as classRepo from './db/repos/classifications.js';
+import * as approvalsRepo from './db/repos/approvals.js';
 import * as currentStatus from './db/repos/current-status.js';
+import { ensureCalendarsAndWatchesBestEffort } from './google/setup.js';
 
 export function registerAdminRoutes(app: FastifyInstance): void {
   app.get('/admin', async (req, reply) => {
     if (!authorized(req, reply)) return;
-    const html = await renderAdminPage();
+    const { reset } = req.query as { reset?: string };
+    const html = await renderAdminPage({ resetBanner: reset === '1' });
     reply.type('text/html; charset=utf-8');
     return html;
+  });
+
+  app.post('/admin/reset', async (req, reply) => {
+    if (!authorized(req, reply)) return;
+    // Wipe classifications + sync tokens so the next sync re-baselines and
+    // re-classifies every event with the current prompt. Also wipe pending
+    // future jobs so they get re-issued with new payloads.
+    await query(`DELETE FROM event_classifications`);
+    await query(`DELETE FROM scheduled_jobs WHERE fired = FALSE`);
+    await query(`UPDATE calendars SET sync_token = NULL`);
+    logger.info('admin reset: classifications + sync tokens cleared');
+    // Kick off resync async so the redirect returns immediately.
+    setImmediate(() => {
+      ensureCalendarsAndWatchesBestEffort().catch((err) =>
+        logger.error({ err }, 'admin reset resync failed')
+      );
+    });
+    reply.redirect('/admin?reset=1');
   });
 }
 
@@ -43,15 +66,17 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-async function renderAdminPage(): Promise<string> {
-  const [accounts, calendars, channels, current, pending, recent] = await Promise.all([
-    accountsRepo.listAccounts(),
-    calendarsRepo.listCalendars(),
-    channelsRepo.listAll(),
-    currentStatus.getCurrent(),
-    jobsRepo.listAllPending(),
-    classRepo.listRecent(10),
-  ]);
+async function renderAdminPage(opts: { resetBanner: boolean }): Promise<string> {
+  const [accounts, calendars, channels, current, pending, recent, approvals] =
+    await Promise.all([
+      accountsRepo.listAccounts(),
+      calendarsRepo.listCalendars(),
+      channelsRepo.listAll(),
+      currentStatus.getCurrent(),
+      jobsRepo.listAllPending(),
+      classRepo.listRecent(10),
+      approvalsRepo.listAll(),
+    ]);
 
   const accountsHtml = accounts.length
     ? table(
@@ -128,6 +153,18 @@ async function renderAdminPage(): Promise<string> {
         ])
       )
     : empty('No classifications yet.');
+
+  const approvalsHtml = approvals.length
+    ? table(
+        ['Event ID', 'DM sent', 'Channel', 'Expires'],
+        approvals.map((a) => [
+          esc(a.event_id.slice(0, 16)),
+          a.slack_message_ts ? 'yes' : 'NO',
+          esc(a.slack_channel_id ?? '—'),
+          relative(a.expires_at),
+        ])
+      )
+    : empty('No personal-event approval DMs awaiting your response.');
 
   const summary = `
     <div class="summary">
@@ -208,15 +245,22 @@ async function renderAdminPage(): Promise<string> {
   .btn.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
   .btn.primary:hover { background: #1557b0; }
   .btn .hint { opacity: .7; font-size: .8rem; font-weight: normal; }
+  button.btn { font: inherit; cursor: pointer; }
+  .banner {
+    margin: 1rem 0; padding: .75rem 1rem; border-radius: 6px;
+    background: #e8f4fd; border: 1px solid #b8dcf6; color: #0c4a6e; font-size: .9rem;
+  }
   @media (prefers-color-scheme: dark) {
     .btn { background: #181818; border-color: #2a2a2a; }
     .btn:hover { background: #222; }
+    .banner { background: #0a2540; border-color: #1c3d63; color: #b8dcf6; }
   }
 </style>
 </head>
 <body>
 <h1>slack-cal admin</h1>
 <div class="muted">${esc(config.PUBLIC_URL)} · auto-refresh every 30s</div>
+${opts.resetBanner ? '<div class="banner">Reset triggered. Reclassification is running in the background — refresh in a minute to see results.</div>' : ''}
 ${summary}
 ${connectHtml}
 
@@ -237,6 +281,14 @@ ${pendingHtml}
 
 <h2>Recent classifications (last 10)</h2>
 ${recentHtml}
+
+<h2>Pending personal approvals</h2>
+${approvalsHtml}
+
+<h2>Maintenance</h2>
+<form method="post" action="/admin/reset" onsubmit="return confirm('Re-classify ALL events under the current prompt? This wipes existing classifications + future jobs and runs Haiku on every event in the next 180 days. Costs ~$0.30 in API fees and takes a few minutes.')">
+  <button type="submit" class="btn">Reset & re-classify all events</button>
+</form>
 </body>
 </html>`;
 }
